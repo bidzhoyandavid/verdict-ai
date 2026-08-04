@@ -18,3 +18,5 @@ dist/
 *.log
 
 tests/*.csv
+
+ONBOARDING_AGENT_PLAN.md

@@ -1,0 +1,23 @@
+[project]
+name = "verdict-ai"
+version = "0.1.0"
+description = "AI-агент для анализа A/B тестов поверх пакета abex"
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph>=0.2",
+    "langchain>=0.3",
+    "langchain-anthropic>=0.3",
+    "plotly>=5.24",
+    "sqlalchemy>=2.0",
+    "pandas>=2.2",
+    "abex @ file:///D:/Startups/abex/dist/abex-0.1.0-py3-none-any.whl",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools]
+packages = ["app", "app.nodes"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

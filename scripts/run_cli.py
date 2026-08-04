@@ -54,6 +54,7 @@ def main() -> None:
     parser.add_argument("--group-col", default=None)
     parser.add_argument("--metric-col", default=None)
     parser.add_argument("--id-col", default=None)
+    parser.add_argument("--company-id", default="_template")
     args = parser.parse_args()
 
     llm = ChatAnthropic(model="claude-sonnet-5")
@@ -61,7 +62,7 @@ def main() -> None:
     config = {"configurable": {"thread_id": str(uuid.uuid4())}}
 
     df = load_file(args.csv)
-    state = empty_state()
+    state = empty_state(args.company_id)
     state["raw_data"] = df
     state["group_col"] = args.group_col
     state["metric_col"] = args.metric_col

@@ -16,21 +16,25 @@ import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent / "config" / "sql_templates"
+COMPANIES_DIR = Path(__file__).resolve().parent.parent.parent / "config" / "companies"
 _PLACEHOLDER_RE = re.compile(r"\{\{(\w+)\}\}")
+
+
+def templates_dir(company_id: str) -> Path:
+    return COMPANIES_DIR / company_id / "sql_templates"
 
 
 class SqlTemplateError(ValueError):
     pass
 
 
-def list_templates(templates_dir: Path = TEMPLATES_DIR) -> list[str]:
+def list_templates(templates_dir: Path) -> list[str]:
     if not templates_dir.exists():
         return []
     return sorted(p.stem for p in templates_dir.glob("*.sql"))
 
 
-def load_template(name: str, templates_dir: Path = TEMPLATES_DIR) -> str:
+def load_template(name: str, templates_dir: Path) -> str:
     path = templates_dir / f"{name}.sql"
     if not path.exists():
         raise SqlTemplateError(f"unknown SQL template: {name!r}")
@@ -73,9 +77,12 @@ def _assert_read_only(sql: str) -> None:
         raise SqlTemplateError("filled query must start with SELECT or WITH")
 
 
-def run_sql_template(engine: Engine, template_name: str, params: dict[str, str]) -> pd.DataFrame:
-    """Fill and execute a named template, returning the result as a DataFrame."""
-    raw = load_template(template_name)
+def run_sql_template(
+    engine: Engine, template_name: str, params: dict[str, str], company_id: str
+) -> pd.DataFrame:
+    """Fill and execute a named template from the company's own template
+    directory, returning the result as a DataFrame."""
+    raw = load_template(template_name, templates_dir(company_id))
     filled = fill_template(raw, params)
     _assert_read_only(filled)
     with engine.connect() as conn:
@@ -84,10 +91,12 @@ def run_sql_template(engine: Engine, template_name: str, params: dict[str, str])
 
 def sql_query_node(state: dict, engine: Engine) -> dict:
     """LangGraph node: reads `sql_template_name`/`sql_params` from state,
-    executes, and returns the resulting `raw_data`."""
+    executes against the calling company's own templates, and returns the
+    resulting `raw_data`."""
     template_name = state.get("sql_template_name")
     params = state.get("sql_params") or {}
+    company_id = state["company_id"]
     if not template_name:
         raise ValueError("sql_template_name must be set before sql_query_node runs")
-    df = run_sql_template(engine, template_name, params)
+    df = run_sql_template(engine, template_name, params, company_id)
     return {"raw_data": df, "data_source": "sql"}

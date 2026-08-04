@@ -3,7 +3,7 @@ from app.state import empty_state
 
 
 def _mid_pipeline_state():
-    state = empty_state()
+    state = empty_state("_template")
     state.update(
         raw_data="df-placeholder",
         group_col="group",

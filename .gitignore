@@ -16,3 +16,5 @@ dist/
 *.env
 
 *.log
+
+tests/*.csv

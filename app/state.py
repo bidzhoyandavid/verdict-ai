@@ -10,6 +10,7 @@ from langgraph.graph.message import add_messages
 
 
 class ABTestState(TypedDict):
+    company_id: str
     raw_data: pd.DataFrame | None
     group_col: str | None
     metric_col: str | None
@@ -39,6 +40,8 @@ class ABTestState(TypedDict):
     sql_template_name: str | None
     sql_params: dict | None
 
+    is_paired_design: bool | None
+
 
 STEP_ORDER: tuple[str, ...] = (
     "load",
@@ -62,6 +65,7 @@ DOWNSTREAM_FIELDS: dict[str, list[str]] = {
         "outlier_recommendation",
         "outlier_decision",
         "treated_metric_col",
+        "is_paired_design",
         "srm_result",
         "recommendation",
         "test_result",
@@ -75,6 +79,7 @@ DOWNSTREAM_FIELDS: dict[str, list[str]] = {
         "outlier_recommendation",
         "outlier_decision",
         "treated_metric_col",
+        "is_paired_design",
         "srm_result",
         "recommendation",
         "test_result",
@@ -96,8 +101,9 @@ DOWNSTREAM_FIELDS: dict[str, list[str]] = {
 }
 
 
-def empty_state() -> ABTestState:
+def empty_state(company_id: str) -> ABTestState:
     return ABTestState(
+        company_id=company_id,
         raw_data=None,
         group_col=None,
         metric_col=None,
@@ -120,6 +126,7 @@ def empty_state() -> ABTestState:
         data_source=None,
         sql_template_name=None,
         sql_params=None,
+        is_paired_design=None,
     )
 
 

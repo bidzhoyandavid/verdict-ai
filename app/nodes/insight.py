@@ -34,7 +34,7 @@ def insight_node(state: ABTestState, llm: Any) -> dict:
             "violations, and any caveats from warnings. Be concise."
         )
 
-    context_fragment = context_system_prompt_fragment()
+    context_fragment = context_system_prompt_fragment(state["company_id"])
     system = (
         "You explain abex statistical results in plain business language. "
         "Only use the numbers given below — never invent figures. "

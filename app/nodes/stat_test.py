@@ -27,14 +27,25 @@ def _split_groups(df, group_col: str, metric_col: str) -> dict[str, "pd.Series"]
     return {str(g): sub[metric_col] for g, sub in df.groupby(group_col)}
 
 
+def _split_groups_paired(df, group_col: str, metric_col: str, id_col: str) -> dict[str, "pd.Series"]:
+    """Pivot to one row per id, one column per group, so `control`/`treatment`
+    are aligned by id (required by paired tests like ttest_rel)."""
+    wide = df.pivot_table(index=id_col, columns=group_col, values=metric_col, aggfunc="first")
+    return {str(g): wide[g] for g in wide.columns}
+
+
 def stat_test_node(state: ABTestState) -> dict:
     df = state["raw_data"]
     group_col = state["group_col"]
     metric_col = active_metric_col(state)
+    id_col = state.get("id_col")
     recommendation = state["recommendation"]
     fn_path = recommendation["fn_path"]
 
-    groups = _split_groups(df, group_col, metric_col)
+    if state.get("is_paired_design") and id_col:
+        groups = _split_groups_paired(df, group_col, metric_col, id_col)
+    else:
+        groups = _split_groups(df, group_col, metric_col)
     group_names = sorted(groups.keys())
     control_name, treatment_name = group_names[0], group_names[1]
     control, treatment = groups[control_name], groups[treatment_name]

@@ -5,7 +5,7 @@ from app.state import empty_state, next_step
 
 
 def test_srm_stop_condition():
-    state = empty_state()
+    state = empty_state("_template")
     state["srm_result"] = {"has_srm": True}
     assert has_srm(state) is True
 
@@ -14,7 +14,7 @@ def test_srm_stop_condition():
 
 
 def test_empty_selector_routes_to_clarify():
-    state = empty_state()
+    state = empty_state("_template")
     state["recommendation"] = None
     assert has_recommendation(state) is False
 
@@ -23,7 +23,7 @@ def test_empty_selector_routes_to_clarify():
 
 
 def test_low_outlier_share_skips_outlier_review():
-    state = empty_state()
+    state = empty_state("_template")
     state["metric_profile"] = {"outlier_share": 0.001}
     assert needs_outlier_review(state) is False
 
@@ -32,7 +32,7 @@ def test_low_outlier_share_skips_outlier_review():
 
 
 def test_next_step_resumes_after_last_completed():
-    state = empty_state()
+    state = empty_state("_template")
     assert next_step(state) == "load"
 
     state["last_completed_step"] = "validate_profile"

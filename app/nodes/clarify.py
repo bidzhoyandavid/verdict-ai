@@ -22,7 +22,7 @@ def clarify_node(state: ABTestState, llm: Any) -> dict:
             f"({state['metric_profile']}) — likely needs a method still in development."
         )
 
-    context_fragment = context_system_prompt_fragment()
+    context_fragment = context_system_prompt_fragment(state["company_id"])
     system = (
         "You are helping an analyst run an A/B test analysis. "
         "Ask one short, specific clarifying question about the issue below — "

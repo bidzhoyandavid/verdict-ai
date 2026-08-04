@@ -11,10 +11,10 @@ from abex.selector.recommend import recommend_test
 from app.state import ABTestState
 
 
-def test_selector_node(state: ABTestState, paired: bool = False) -> dict:
+def test_selector_node(state: ABTestState) -> dict:
     profile_dict = state["metric_profile"]
     profile = MetricProfile(**profile_dict)
-    ranked = recommend_test(profile, paired=paired)
+    ranked = recommend_test(profile, paired=bool(state.get("is_paired_design")))
 
     if not ranked:
         return {"recommendation": None, "needs_clarification": True, "last_completed_step": "test_selector"}

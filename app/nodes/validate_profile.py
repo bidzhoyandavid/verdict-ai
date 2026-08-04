@@ -16,6 +16,18 @@ from app.state import ABTestState
 OUTLIER_SHARE_HITL_THRESHOLD = 0.01
 
 
+def _is_paired_design(df, group_col: str, id_col: str | None) -> bool:
+    """True iff every id appears exactly once in every group — the "same
+    unit measured under N conditions" shape validators.validate() otherwise
+    flags as duplicated ids."""
+    if id_col is None:
+        return False
+    counts = df.groupby(id_col)[group_col].nunique()
+    n_groups = df[group_col].nunique()
+    per_id_group_counts = df.groupby([id_col, group_col]).size()
+    return bool(len(counts) > 0 and (counts == n_groups).all() and (per_id_group_counts == 1).all())
+
+
 def validate_profile_node(state: ABTestState) -> dict:
     df = state["raw_data"]
     group_col = state["group_col"]
@@ -26,12 +38,20 @@ def validate_profile_node(state: ABTestState) -> dict:
     metric_profile = profiling.profile_metric(df, metric_col=metric_col, group_col=group_col)
     mask = outliers.detect_outliers(df[metric_col], method="iqr")
 
+    is_paired = _is_paired_design(df, group_col, id_col)
+    issues = validation_report.issues
+    if is_paired:
+        issues = [i for i in issues if not i.startswith(f"{validation_report.n_duplicates} duplicated rows by id column")]
+    report_dict = asdict(validation_report)
+    report_dict["issues"] = issues
+
     return {
-        "validation_report": asdict(validation_report),
+        "validation_report": report_dict,
         "metric_profile": asdict(metric_profile),
         "outlier_mask": mask.tolist(),
+        "is_paired_design": is_paired,
         "last_completed_step": "validate_profile",
-        "needs_clarification": not validation_report.is_clean,
+        "needs_clarification": len(issues) > 0,
     }
 
 

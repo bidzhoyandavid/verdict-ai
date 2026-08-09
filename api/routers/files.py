@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import shutil
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
@@ -50,15 +51,29 @@ async def upload_dataset(user: UserDep, file: UploadFile = File(...)) -> Dataset
     return DatasetOut(dataset_id=dataset_id, n_rows=meta["n_rows"], columns=meta["columns"])
 
 
+def _company_doc_path(company_id: str) -> Path:
+    return Path(settings.uploads_dir) / "company_docs" / company_id / "company.md"
+
+
+@router.get("/company-doc")
+def list_company_docs(user: UserDep) -> list[dict]:
+    """At most one doc per company for now — versioning comes with the
+    onboarding rework, the list shape is already what the UI expects."""
+    path = _company_doc_path(user.company_id)
+    if not path.exists():
+        return []
+    updated = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+    return [{"version": "v1", "filename": path.name, "updatedAt": updated.strftime("%d.%m.%Y")}]
+
+
 @router.post("/company-doc", status_code=status.HTTP_201_CREATED)
 async def upload_company_doc(user: UserDep, file: UploadFile = File(...)) -> dict:
     """Stores the onboarding .md as-is; the onboarding flow reads it from here."""
     if Path(file.filename or "").suffix.lower() != ".md":
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "expected a .md file")
 
-    target_dir = Path(settings.uploads_dir) / "company_docs" / user.company_id
-    target_dir.mkdir(parents=True, exist_ok=True)
-    target = target_dir / "company.md"
+    target = _company_doc_path(user.company_id)
+    target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("wb") as out:
         shutil.copyfileobj(file.file, out)
 

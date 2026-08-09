@@ -1,4 +1,4 @@
-"""Loads raw_data from a file upload and detects column roles.
+"""Detects column roles on the dataset referenced by the state.
 
 Detection is heuristic-first (name matching), LLM only as a fallback when
 heuristics are ambiguous — keeps the common case free of an LLM round trip.
@@ -6,26 +6,17 @@ heuristics are ambiguous — keeps the common case free of an LLM round trip.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from abex.data import loaders
 from pydantic import BaseModel, Field
 
+from app.datasets import load_active
 from app.state import ABTestState
 
 _GROUP_NAME_HINTS = ("group", "variant", "arm", "bucket", "cohort", "treatment")
 _METRIC_NAME_HINTS = ("metric", "value", "revenue", "conversion", "count", "duration", "amount")
 _ID_NAME_HINTS = ("user_id", "userid", "id", "uid", "customer_id")
-
-
-def load_file(path: str | Path) -> pd.DataFrame:
-    """Load a CSV or Parquet file via abex.data.loaders based on extension."""
-    path = Path(path)
-    if path.suffix.lower() == ".parquet":
-        return loaders.load_parquet(path)
-    return loaders.load_csv(path)
 
 
 def _heuristic_match(columns: list[str], hints: tuple[str, ...]) -> str | None:
@@ -69,15 +60,11 @@ def detect_column_roles(df: pd.DataFrame, llm: Any | None = None) -> dict:
 
 
 def load_node(state: ABTestState, llm: Any | None = None) -> dict:
-    """LangGraph node: assumes `state["raw_data"]` was already populated by
-    the UI (file upload) or by `sql_query_node`; here we only detect columns
+    """LangGraph node: assumes `state["dataset_id"]` was already populated by
+    the API (file upload) or by `sql_query_node`; here we only detect columns
     if they aren't set yet."""
-    df = state["raw_data"]
-    if df is None:
-        raise ValueError("raw_data must be set before load_node runs")
-
     if state.get("group_col") and state.get("metric_col"):
         return {"last_completed_step": "load"}
 
-    roles = detect_column_roles(df, llm=llm)
+    roles = detect_column_roles(load_active(state), llm=llm)
     return {**roles, "last_completed_step": "load"}

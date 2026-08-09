@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 from abex.data import outliers as abex_outliers
 
+from app.datasets import load_dataset, put_dataframe
 from app.nodes._hitl import ask_human
 from app.state import ABTestState
 
@@ -85,7 +86,8 @@ def _apply(df: pd.DataFrame, metric_col: str, mask: pd.Series, decision: dict) -
 
 
 def outlier_review_node(state: ABTestState) -> dict:
-    df = state["raw_data"]
+    dataset_id = state["dataset_id"]
+    df = load_dataset(dataset_id)
     metric_col = state["metric_col"]
     profile = state["metric_profile"]
     mask = pd.Series(state["outlier_mask"], index=df.index, dtype=bool)
@@ -105,8 +107,19 @@ def outlier_review_node(state: ABTestState) -> dict:
     )
 
     new_df, treated_col = _apply(df, metric_col, mask, decision)
+    # A treatment produces a new immutable dataset; "none" reuses the original.
+    treated_dataset_id = (
+        None
+        if new_df is df
+        else put_dataframe(
+            new_df,
+            company_id=state.get("company_id", "_unknown"),
+            source="outlier_treatment",
+            origin=dataset_id,
+        )
+    )
     return {
-        "raw_data": new_df,
+        "treated_dataset_id": treated_dataset_id,
         "outlier_options": options,
         "outlier_recommendation": recommendation,
         "outlier_decision": decision,

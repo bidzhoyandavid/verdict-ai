@@ -12,6 +12,7 @@ from abex.report import build_report
 from abex.stats.bootstrap import BootstrapResult
 from abex.stats.frequentist import TestResult
 
+from app.datasets import load_active
 from app.state import ABTestState, active_metric_col
 
 ALPHA = 0.05
@@ -35,7 +36,7 @@ def _split_groups_paired(df, group_col: str, metric_col: str, id_col: str) -> di
 
 
 def stat_test_node(state: ABTestState) -> dict:
-    df = state["raw_data"]
+    df = load_active(state)
     group_col = state["group_col"]
     metric_col = active_metric_col(state)
     id_col = state.get("id_col")

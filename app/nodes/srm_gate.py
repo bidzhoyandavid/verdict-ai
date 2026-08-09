@@ -8,13 +8,14 @@ from dataclasses import asdict
 
 from abex.design import srm
 
+from app.datasets import load_active
 from app.state import ABTestState
 
 SRM_ALPHA = 0.001
 
 
 def srm_gate_node(state: ABTestState) -> dict:
-    df = state["raw_data"]
+    df = load_active(state)
     group_col = state["group_col"]
     counts = df[group_col].value_counts().to_dict()
 

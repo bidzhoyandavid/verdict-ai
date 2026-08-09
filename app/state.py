@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import Annotated, Any, TypedDict
 
-import pandas as pd
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
 
 class ABTestState(TypedDict):
     company_id: str
-    raw_data: pd.DataFrame | None
+    # The dataset itself lives in `app.datasets`; state carries only the id.
+    dataset_id: str | None
     group_col: str | None
     metric_col: str | None
     id_col: str | None
@@ -34,6 +34,7 @@ class ABTestState(TypedDict):
     outlier_recommendation: str | None
     outlier_decision: dict | None
     treated_metric_col: str | None
+    treated_dataset_id: str | None
 
     # data source
     data_source: str | None
@@ -65,6 +66,7 @@ DOWNSTREAM_FIELDS: dict[str, list[str]] = {
         "outlier_recommendation",
         "outlier_decision",
         "treated_metric_col",
+        "treated_dataset_id",
         "is_paired_design",
         "srm_result",
         "recommendation",
@@ -79,6 +81,7 @@ DOWNSTREAM_FIELDS: dict[str, list[str]] = {
         "outlier_recommendation",
         "outlier_decision",
         "treated_metric_col",
+        "treated_dataset_id",
         "is_paired_design",
         "srm_result",
         "recommendation",
@@ -88,6 +91,7 @@ DOWNSTREAM_FIELDS: dict[str, list[str]] = {
     "outlier_review": [
         "outlier_decision",
         "treated_metric_col",
+        "treated_dataset_id",
         "srm_result",
         "recommendation",
         "test_result",
@@ -104,7 +108,7 @@ DOWNSTREAM_FIELDS: dict[str, list[str]] = {
 def empty_state(company_id: str) -> ABTestState:
     return ABTestState(
         company_id=company_id,
-        raw_data=None,
+        dataset_id=None,
         group_col=None,
         metric_col=None,
         id_col=None,
@@ -123,6 +127,7 @@ def empty_state(company_id: str) -> ABTestState:
         outlier_recommendation=None,
         outlier_decision=None,
         treated_metric_col=None,
+        treated_dataset_id=None,
         data_source=None,
         sql_template_name=None,
         sql_params=None,

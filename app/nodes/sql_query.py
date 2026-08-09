@@ -16,6 +16,8 @@ import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+from app.datasets import put_dataframe
+
 COMPANIES_DIR = Path(__file__).resolve().parent.parent.parent / "config" / "companies"
 _PLACEHOLDER_RE = re.compile(r"\{\{(\w+)\}\}")
 
@@ -92,11 +94,12 @@ def run_sql_template(
 def sql_query_node(state: dict, engine: Engine) -> dict:
     """LangGraph node: reads `sql_template_name`/`sql_params` from state,
     executes against the calling company's own templates, and returns the
-    resulting `raw_data`."""
+    resulting dataset id."""
     template_name = state.get("sql_template_name")
     params = state.get("sql_params") or {}
     company_id = state["company_id"]
     if not template_name:
         raise ValueError("sql_template_name must be set before sql_query_node runs")
     df = run_sql_template(engine, template_name, params, company_id)
-    return {"raw_data": df, "data_source": "sql"}
+    dataset_id = put_dataframe(df, company_id=company_id, source="sql")
+    return {"dataset_id": dataset_id, "data_source": "sql"}

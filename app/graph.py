@@ -29,7 +29,14 @@ from app.nodes.validate_profile import needs_outlier_review, validate_profile_no
 from app.state import ABTestState, next_step
 
 
-def build_graph(llm: Any, guardrail_specs: list[dict] | None = None):
+def build_graph(
+    llm: Any,
+    guardrail_specs: list[dict] | None = None,
+    checkpointer: Any | None = None,
+):
+    """`checkpointer` defaults to an in-process MemorySaver — fine for the CLI,
+    but the API must pass a durable one (Postgres), otherwise every paused
+    HITL run dies with the process."""
     guardrail_specs = guardrail_specs or []
     graph = StateGraph(ABTestState)
 
@@ -102,7 +109,8 @@ def build_graph(llm: Any, guardrail_specs: list[dict] | None = None):
     graph.add_edge("clarify", END)
     graph.add_edge("insight", END)
 
-    # raw_data is a pandas DataFrame — not msgpack-serializable by the default
-    # serde, so fall back to pickle for it (and any other non-JSON state).
-    checkpointer = MemorySaver(serde=JsonPlusSerializer(pickle_fallback=True))
+    # State holds only JSON-ish values plus numpy scalars coming out of abex
+    # reports; pickle_fallback covers the latter.
+    if checkpointer is None:
+        checkpointer = MemorySaver(serde=JsonPlusSerializer(pickle_fallback=True))
     return graph.compile(checkpointer=checkpointer)

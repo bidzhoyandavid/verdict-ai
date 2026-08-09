@@ -23,7 +23,7 @@ from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 
 from app.graph import build_graph
-from app.nodes.data_loader import load_file
+from app.datasets import put_file
 from app.state import empty_state
 
 
@@ -61,9 +61,8 @@ def main() -> None:
     graph = build_graph(llm, guardrail_specs=[])
     config = {"configurable": {"thread_id": str(uuid.uuid4())}}
 
-    df = load_file(args.csv)
     state = empty_state(args.company_id)
-    state["raw_data"] = df
+    state["dataset_id"] = put_file(args.csv, company_id=args.company_id)
     state["group_col"] = args.group_col
     state["metric_col"] = args.metric_col
     state["id_col"] = args.id_col

@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 
+from app.datasets import load_dataset, put_dataframe
 from app.nodes.outlier_review import _build_options, _recommend, outlier_review_node
 
 
@@ -55,7 +56,8 @@ def test_outlier_review_node_pauses_and_resumes(monkeypatch):
     profile = asdict(profile_metric(df, "metric", "group"))
 
     state = {
-        "raw_data": df,
+        "company_id": "_test",
+        "dataset_id": put_dataframe(df, company_id="_test"),
         "metric_col": "metric",
         "metric_profile": profile,
         "outlier_mask": mask.tolist(),
@@ -66,4 +68,4 @@ def test_outlier_review_node_pauses_and_resumes(monkeypatch):
     assert calls["payload"]["kind"] == "outlier_review"
     assert result["outlier_decision"]["method"] == "winsorize"
     assert result["treated_metric_col"] == "metric__treated"
-    assert "metric__treated" in result["raw_data"].columns
+    assert "metric__treated" in load_dataset(result["treated_dataset_id"]).columns

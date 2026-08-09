@@ -5,7 +5,7 @@ from app.state import empty_state
 def _mid_pipeline_state():
     state = empty_state("_template")
     state.update(
-        raw_data="df-placeholder",
+        dataset_id="ds-placeholder",
         group_col="group",
         metric_col="revenue",
         validation_report={"issues": []},
@@ -15,6 +15,7 @@ def _mid_pipeline_state():
         outlier_recommendation="winsorize",
         outlier_decision={"method": "winsorize"},
         treated_metric_col="revenue__treated",
+        treated_dataset_id="ds-treated",
         srm_result={"has_srm": False},
         recommendation={"method_name": "t_test"},
         test_result={"decision": "significant"},
@@ -28,12 +29,13 @@ def test_revise_metric_col_clears_everything_downstream_of_validate():
     state = _mid_pipeline_state()
     revised = invalidate_from(state, "validate_profile")
 
-    assert revised["raw_data"] == "df-placeholder"  # upstream untouched
+    assert revised["dataset_id"] == "ds-placeholder"  # upstream untouched
     assert revised["group_col"] == "group"
     assert revised["validation_report"] is None
     assert revised["metric_profile"] is None
     assert revised["outlier_decision"] is None
     assert revised["treated_metric_col"] is None
+    assert revised["treated_dataset_id"] is None
     assert revised["srm_result"] is None
     assert revised["recommendation"] is None
     assert revised["test_result"] is None
@@ -49,6 +51,7 @@ def test_revise_outlier_review_keeps_validation_and_profile():
     assert revised["metric_profile"] == {"kind": "continuous"}
     assert revised["outlier_decision"] is None
     assert revised["treated_metric_col"] is None
+    assert revised["treated_dataset_id"] is None
     assert revised["srm_result"] is None
     assert revised["test_result"] is None
     assert revised["last_completed_step"] == "validate_profile"

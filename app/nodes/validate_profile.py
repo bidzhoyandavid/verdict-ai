@@ -11,6 +11,7 @@ from dataclasses import asdict
 
 from abex.data import outliers, profiling, validators
 
+from app.datasets import load_active
 from app.state import ABTestState
 
 OUTLIER_SHARE_HITL_THRESHOLD = 0.01
@@ -29,7 +30,7 @@ def _is_paired_design(df, group_col: str, id_col: str | None) -> bool:
 
 
 def validate_profile_node(state: ABTestState) -> dict:
-    df = state["raw_data"]
+    df = load_active(state)
     group_col = state["group_col"]
     metric_col = state["metric_col"]
     id_col = state.get("id_col")

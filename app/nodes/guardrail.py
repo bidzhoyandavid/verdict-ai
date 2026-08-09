@@ -7,15 +7,16 @@ from dataclasses import asdict
 
 from abex.analysis.guardrails import check_guardrail
 
+from app.datasets import load_active
 from app.state import ABTestState
 
 
 def guardrail_node(state: ABTestState, guardrail_specs: list[dict]) -> dict:
     """`guardrail_specs`: list of
     `{"metric_col": str, "max_allowed_degradation": float, "higher_is_better": bool}`
-    for metrics present in `raw_data` alongside the primary metric.
+    for metrics present in the dataset alongside the primary metric.
     """
-    df = state["raw_data"]
+    df = load_active(state)
     group_col = state["group_col"]
     results = []
 

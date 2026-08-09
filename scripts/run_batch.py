@@ -14,7 +14,7 @@ from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 
 from app.graph import build_graph
-from app.nodes.data_loader import load_file
+from app.datasets import load_file, put_dataframe
 from app.state import empty_state
 
 CSV = "tests/t_2845_ab_test_Moscow_2weeks_short_rents_winsorized.csv"
@@ -30,11 +30,11 @@ METRICS = [
 ]
 
 
-def run_one(graph, df, metric: str) -> None:
+def run_one(graph, dataset_id: str, metric: str) -> None:
     print(f"\n{'=' * 80}\nMETRIC: {metric}\n{'=' * 80}")
     config = {"configurable": {"thread_id": str(uuid.uuid4())}}
     state = empty_state("_template")
-    state["raw_data"] = df
+    state["dataset_id"] = dataset_id
     state["group_col"] = GROUP_COL
     state["metric_col"] = metric
     state["id_col"] = ID_COL
@@ -70,10 +70,10 @@ def run_one(graph, df, metric: str) -> None:
 def main() -> None:
     llm = ChatAnthropic(model="claude-sonnet-5")
     graph = build_graph(llm, guardrail_specs=[])
-    df = load_file(CSV)
-    df = df.dropna(subset=[GROUP_COL, ID_COL])
+    df = load_file(CSV).dropna(subset=[GROUP_COL, ID_COL])
+    dataset_id = put_dataframe(df, company_id="_template")
     for metric in METRICS:
-        run_one(graph, df, metric)
+        run_one(graph, dataset_id, metric)
 
 
 if __name__ == "__main__":

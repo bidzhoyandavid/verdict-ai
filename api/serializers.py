@@ -1,5 +1,8 @@
-"""ORM rows -> wire shapes, including the compact result summary the tests
-table renders."""
+"""ORM rows -> wire shapes.
+
+The results table arrives from the graph already final — this module only
+reshapes it and derives the one-line summary the tests list shows.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +11,7 @@ from typing import Any
 import numpy as np
 
 from api.models import Message, Test, User
-from api.schemas import GroupResult, MessageOut, TestOut, TestResults, UserOut
+from api.schemas import CheckResult, MessageOut, ResultRow, TestOut, TestResults, UserOut, Verdict
 
 
 def jsonable(value: Any) -> Any:
@@ -49,51 +52,69 @@ def user_out(user: User, onboarded: bool) -> UserOut:
     )
 
 
-def _fmt_p(p_value: Any) -> str:
-    if p_value is None:
+def _short_summary(rows: list[dict], srm: bool, power: dict | None) -> str:
+    """Одна строка для колонки «Результаты» — по главной метрике."""
+    if srm:
+        return "SRM: результат невалиден"
+    if not rows:
         return ""
-    return f"p={p_value:.3g}"
+
+    primary = next((row for row in rows if row.get("is_primary")), rows[0])
+    lift = primary.get("relative_diff")
+    lift_str = f"{lift * 100:+.1f}%" if isinstance(lift, (int, float)) else "—"
+
+    p_value = primary.get("adjusted_p_value") or primary.get("p_value")
+    p_str = f"p={p_value:.3g}" if isinstance(p_value, (int, float)) else ""
+
+    if primary.get("significant"):
+        verdict = "значимо"
+    elif (power or {}).get("verdict") == "need_more_data":
+        verdict = "нужно больше данных"
+    else:
+        verdict = "не значимо"
+
+    parts = [f"{primary.get('metric')} {lift_str}", p_str, verdict]
+    return ", ".join(part for part in parts if part)
 
 
 def summarize(results: dict[str, Any] | None) -> TestResults | None:
-    """Squeeze the graph output into the two-line form the UI lists.
-
-    SRM short-circuits the pipeline, so an SRM verdict is reported even when
-    there is no stat test at all.
-    """
     if not results:
         return None
 
-    srm = results.get("srm_result") or {}
-    if srm.get("has_srm"):
-        return TestResults(groups=[], short="SRM: результат невалиден", raw=results)
+    rows = results.get("results_table") or []
+    srm = bool((results.get("srm_result") or {}).get("has_srm"))
+    power = results.get("power")
+    correction = (results.get("multiple_testing") or {}).get("method")
 
-    report = results.get("test_result") or {}
-    if not report:
-        return TestResults(groups=[], short="", raw=results)
-
-    effect = report.get("effect") or {}
-    lift = effect.get("relative_lift")
-    lift_str = f"{lift * 100:+.1f}%" if isinstance(lift, (int, float)) else "—"
-    p_str = _fmt_p(report.get("p_value"))
-    significant = report.get("decision") == "significant"
-
-    control = str(report.get("control_group", "control"))
-    treatment = str(report.get("treatment_group", "treatment"))
-    groups = [
-        GroupResult(group=control, conversion="—", delta="—"),
-        GroupResult(
-            group=treatment,
-            conversion="—",
-            delta=", ".join(x for x in (lift_str, p_str) if x),
-            good=significant and isinstance(lift, (int, float)) and lift > 0,
-        ),
+    violations = [
+        str(item.get("metric_name") or item.get("metric"))
+        for item in (results.get("guardrail_results") or [])
+        if item.get("violated") or item.get("is_violated")
     ]
-    short = ", ".join(x for x in (f"{treatment} {lift_str}", p_str) if x)
-    return TestResults(groups=groups, short=short, raw=results)
+
+    verdict = results.get("verdict")
+    return TestResults(
+        rows=[ResultRow(**{k: v for k, v in row.items() if k in ResultRow.model_fields}) for row in rows],
+        checks=[
+            CheckResult(**{k: v for k, v in check.items() if k in CheckResult.model_fields})
+            for check in (results.get("checks") or [])
+        ],
+        verdict=Verdict(**{k: v for k, v in verdict.items() if k in Verdict.model_fields})
+        if verdict
+        else None,
+        short=_short_summary(rows, srm, power),
+        srm_detected=srm,
+        correction_applied=correction,
+        power_verdict=(power or {}).get("verdict"),
+        timeline_warnings=list(results.get("timeline_warnings") or []),
+        guardrail_violations=violations,
+        raw=results,
+    )
 
 
-def test_out(test: Test) -> TestOut:
+def test_out(test: Test, include_charts: bool = False) -> TestOut:
+    """`include_charts` только для детального эндпоинта: спеки plotly весят
+    десятки килобайт и в списке тестов не нужны."""
     return TestOut(
         id=test.id,
         name=test.name,
@@ -103,6 +124,7 @@ def test_out(test: Test) -> TestOut:
         date=test.created_at.strftime("%d.%m.%Y"),
         dataset_id=test.dataset_id,
         results=summarize(test.results),
+        charts=(test.charts or []) if include_charts else None,
         pending_interrupt=test.pending_interrupt,
         error=test.error,
     )

@@ -8,14 +8,19 @@ from dataclasses import asdict
 from abex.analysis.guardrails import check_guardrail
 
 from app.datasets import load_active
+from app.groups import ordered_pair
 from app.state import ABTestState
 
 
-def guardrail_node(state: ABTestState, guardrail_specs: list[dict]) -> dict:
+def guardrail_node(state: ABTestState, guardrail_specs: list[dict] | None = None) -> dict:
     """`guardrail_specs`: list of
     `{"metric_col": str, "max_allowed_degradation": float, "higher_is_better": bool}`
     for metrics present in the dataset alongside the primary metric.
+
+    Specs come with the run (per test, from the company config); the compiled
+    default is only a fallback so the CLI keeps working.
     """
+    guardrail_specs = state.get("guardrail_specs") or guardrail_specs or []
     df = load_active(state)
     group_col = state["group_col"]
     results = []
@@ -24,8 +29,7 @@ def guardrail_node(state: ABTestState, guardrail_specs: list[dict]) -> dict:
         return {"guardrail_results": [], "last_completed_step": "guardrail"}
 
     groups = {str(g): sub for g, sub in df.groupby(group_col)}
-    group_names = sorted(groups.keys())
-    control_name, treatment_name = group_names[0], group_names[1]
+    control_name, treatment_name = ordered_pair(state, list(groups.keys()))
 
     for spec in guardrail_specs:
         metric_col = spec["metric_col"]

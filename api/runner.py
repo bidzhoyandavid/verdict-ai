@@ -71,7 +71,13 @@ def build_initial_state(test: Test, user_text: str) -> dict:
     config = test.config or {}
     state["group_col"] = config.get("group_col")
     state["metric_col"] = config.get("metric_col")
+    state["metric_cols"] = config.get("metric_cols") or []
     state["id_col"] = config.get("id_col")
+    state["timestamp_col"] = config.get("timestamp_col")
+    state["control_group"] = config.get("control_group")
+    state["treatment_group"] = config.get("treatment_group")
+    state["guardrail_specs"] = config.get("guardrail_specs") or []
+    state["ratio_metric_specs"] = config.get("ratio_metric_specs") or []
     state["messages"] = [HumanMessage(content=user_text)]
     return state
 
@@ -150,19 +156,31 @@ def _finish(test_id: str, channel: str, config: dict, last_node: str | None) -> 
 
     results = jsonable(
         {
-            "test_result": snapshot.get("test_result"),
+            "results_table": snapshot.get("results_table") or [],
+            "checks": snapshot.get("checks") or [],
+            "verdict": snapshot.get("verdict"),
+            "assumptions": snapshot.get("assumption_results"),
+            "validation_report": snapshot.get("validation_report"),
+            "metric_profile": snapshot.get("metric_profile"),
+            "test_results": snapshot.get("test_results") or [],
+            "group_stats": snapshot.get("group_stats") or [],
             "srm_result": snapshot.get("srm_result"),
             "recommendation": snapshot.get("recommendation"),
+            "multiple_testing": snapshot.get("multiple_testing_result"),
             "guardrail_results": snapshot.get("guardrail_results") or [],
+            "power": snapshot.get("power_result"),
+            "timeline_warnings": snapshot.get("timeline_warnings") or [],
         }
     )
-    has_results = any(results[key] for key in ("test_result", "srm_result"))
+    charts = jsonable(snapshot.get("charts") or [])
+    has_results = bool(results["results_table"] or results["srm_result"])
 
     with SessionLocal() as session:
         test = session.get(Test, test_id)
         if test is not None:
             if has_results:
                 test.results = results
+                test.charts = charts
             _set_status(session, test, status, pending_interrupt=None)
     events.publish(channel, "run.finished", {"status": status, "results": results if has_results else None})
 

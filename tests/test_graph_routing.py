@@ -36,9 +36,12 @@ def test_next_step_resumes_after_last_completed():
     assert next_step(state) == "load"
 
     state["last_completed_step"] = "validate_profile"
-    assert next_step(state) == "outlier_review"
+    assert next_step(state) == "assumption_checks"
 
-    state["last_completed_step"] = "guardrail"
+    state["last_completed_step"] = "stat_test"
+    assert next_step(state) == "ratio_metrics"
+
+    state["last_completed_step"] = "charts"
     assert next_step(state) == "insight"
 
     state["last_completed_step"] = "insight"

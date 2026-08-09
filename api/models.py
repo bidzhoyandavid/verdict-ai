@@ -71,6 +71,9 @@ class Test(Base):
 
     # Denormalized snapshot for the list view, so "All tests" never resurrects graphs.
     results: Mapped[dict | None] = mapped_column(JSON, default=None)
+    # Plotly specs are tens of KB each — kept out of `results` so the list
+    # endpoint does not drag them along.
+    charts: Mapped[list | None] = mapped_column(JSON, default=None)
     # Live interrupt payload, so a page reload re-renders the pending question.
     pending_interrupt: Mapped[dict | None] = mapped_column(JSON, default=None)
     error: Mapped[str | None] = mapped_column(Text, default=None)

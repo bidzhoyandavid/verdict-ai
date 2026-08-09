@@ -51,7 +51,13 @@ def create_test(payload: NewTestRequest, user: UserDep, session: SessionDep) -> 
             "end_date": payload.end_date,
             "group_col": payload.group_col,
             "metric_col": payload.metric_col,
+            "metric_cols": payload.metric_cols,
             "id_col": payload.id_col,
+            "timestamp_col": payload.timestamp_col,
+            "control_group": payload.control_group,
+            "treatment_group": payload.treatment_group,
+            "guardrail_specs": payload.guardrail_specs,
+            "ratio_metric_specs": payload.ratio_metric_specs,
         },
     )
     session.add(test)
@@ -72,7 +78,7 @@ def create_test(payload: NewTestRequest, user: UserDep, session: SessionDep) -> 
 
 @router.get("/{test_id}", response_model=TestOut)
 def get_test(test: TestDep) -> TestOut:
-    return test_out(test)
+    return test_out(test, include_charts=True)
 
 
 @router.get("/{test_id}/messages", response_model=list[MessageOut])

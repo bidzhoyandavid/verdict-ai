@@ -107,8 +107,9 @@ def main() -> int:
         print(f"{message['author']}: {message['text']}\n")
 
     final = client.get(f"/tests/{test_id}", headers=headers).json()
-    print("--- result ---")
-    print(json.dumps(final.get("results"), ensure_ascii=False, indent=2))
+    _print_table(final.get("results"))
+    charts = final.get("charts") or []
+    print(f"charts: {[c.get('kind') for c in charts]}")
 
     if status not in ("done", "clarifying"):
         log("FAIL", f"final status={status} error={final.get('error')}")
@@ -118,6 +119,37 @@ def main() -> int:
     else:
         log("OK", "run finished")
     return 0
+
+
+def _print_table(results: dict | None) -> None:
+    print("--- results table ---")
+    if not results or not results.get("rows"):
+        print("(пусто)")
+        return
+
+    header = f"{'метрика':<28}{'control':>12}{'treatment':>12}{'Δ абс':>12}{'Δ %':>10}{'p':>10}{'95% CI':>26}  значимо"
+    print(header)
+    for row in results["rows"]:
+        def num(value, digits=4):
+            return "—" if value is None else f"{value:.{digits}g}"
+
+        ci = "—"
+        if row.get("ci_low") is not None and row.get("ci_high") is not None:
+            ci = f"[{row['ci_low']:.4g}; {row['ci_high']:.4g}]"
+        relative = "—" if row.get("relative_diff") is None else f"{row['relative_diff'] * 100:.2f}%"
+        p_value = row.get("adjusted_p_value") or row.get("p_value")
+        significant = {True: "да", False: "нет", None: "—"}[row.get("significant")]
+        print(
+            f"{str(row['metric'])[:27]:<28}{num(row.get('control_value')):>12}"
+            f"{num(row.get('treatment_value')):>12}{num(row.get('absolute_diff')):>12}"
+            f"{relative:>10}{num(p_value, 3):>10}{ci:>26}  {significant}"
+        )
+
+    for note in ("correction_applied", "power_verdict"):
+        if results.get(note):
+            print(f"{note}: {results[note]}")
+    for warning in results.get("timeline_warnings") or []:
+        print(f"timeline: {warning}")
 
 
 def _follow(client: httpx.Client, headers: dict, test_id: str, base_url: str, token: str) -> str:

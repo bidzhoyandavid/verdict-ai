@@ -119,7 +119,17 @@ def test_create_test_with_dataset_runs_the_graph(client, auth, monkeypatch):
             {"load": {"group_col": "group", "metric_col": "metric"}},
             {"insight": {"messages": [AIMessage(content="Вариант B значимо лучше.")]}},
         ],
-        final={"test_result": {"p_value": 0.02, "decision": "significant", "effect": {"relative_lift": 0.21}}},
+        final={
+            "results_table": [
+                {
+                    "metric": "metric",
+                    "is_primary": True,
+                    "relative_diff": 0.21,
+                    "p_value": 0.02,
+                    "significant": True,
+                }
+            ]
+        },
     )
     monkeypatch.setattr("api.runner.get_graph", lambda: graph)
 
@@ -132,7 +142,8 @@ def test_create_test_with_dataset_runs_the_graph(client, auth, monkeypatch):
 
     body = _wait_for_status(client, auth, created["id"], {"done", "failed"})
     assert body["status"] == "done"
-    assert body["results"]["short"].startswith("treatment +21.0%")
+    assert body["results"]["short"] == "metric +21.0%, p=0.02, значимо"
+    assert body["results"]["rows"][0]["significant"] is True
 
     messages = client.get(f"/tests/{created['id']}/messages", headers=auth).json()
     assert [m["role"] for m in messages] == ["user", "agent"]

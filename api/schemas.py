@@ -39,18 +39,61 @@ class TokenOut(BaseModel):
     user: UserOut
 
 
-class GroupResult(BaseModel):
-    group: str
-    conversion: str
-    delta: str
-    good: bool | None = None
+class ResultRow(BaseModel):
+    """Одна строка итоговой таблицы — одна метрика."""
+
+    metric: str
+    is_primary: bool = False
+    control_group: str | None = None
+    treatment_group: str | None = None
+    control_value: float | None = None
+    treatment_value: float | None = None
+    n_control: int | None = None
+    n_treatment: int | None = None
+    absolute_diff: float | None = None
+    relative_diff: float | None = None
+    p_value: float | None = None
+    adjusted_p_value: float | None = None
+    ci_low: float | None = None
+    ci_high: float | None = None
+    relative_ci_low: float | None = None
+    relative_ci_high: float | None = None
+    significant: bool | None = None
+    method: str | None = None
+    warnings: list[str] = []
+
+
+class CheckResult(BaseModel):
+    """Одна проверка пайплайна: ok / warning / failed / skipped."""
+
+    name: str
+    status: Literal["ok", "warning", "failed", "skipped"]
+    detail: str = ""
+
+
+class Verdict(BaseModel):
+    code: str
+    label: str
+    action: str
+    metric: str | None = None
+    relative_diff: float | None = None
+    p_value: float | None = None
+    blocking_checks: list[str] = []
+    caveats: list[str] = []
 
 
 class TestResults(BaseModel):
-    groups: list[GroupResult] = []
+    rows: list[ResultRow] = []
+    checks: list[CheckResult] = []
+    verdict: Verdict | None = None
+    # Компактная сводка для колонки "Результаты" в списке тестов.
     short: str = ""
-    # Full graph output for the detailed view; the two fields above are the
-    # compact form the tests table renders.
+    srm_detected: bool = False
+    correction_applied: str | None = None
+    power_verdict: str | None = None
+    timeline_warnings: list[str] = []
+    guardrail_violations: list[str] = []
+    # Полный вывод графа для детального разбора.
     raw: dict[str, Any] | None = None
 
 
@@ -63,6 +106,8 @@ class TestOut(BaseModel):
     date: str
     dataset_id: str | None = None
     results: TestResults | None = None
+    # Plotly-спеки; отдаются только на детальном эндпоинте.
+    charts: list[dict[str, Any]] | None = None
     pending_interrupt: dict[str, Any] | None = None
     error: str | None = None
 
@@ -79,7 +124,14 @@ class NewTestRequest(BaseModel):
     dataset_id: str | None = None
     group_col: str | None = None
     metric_col: str | None = None
+    metric_cols: list[str] = []
     id_col: str | None = None
+    timestamp_col: str | None = None
+    # Явные роли групп: без них направление эффекта определяется по названиям.
+    control_group: str | None = None
+    treatment_group: str | None = None
+    guardrail_specs: list[dict[str, Any]] = []
+    ratio_metric_specs: list[dict[str, Any]] = []
 
 
 class MessageOut(BaseModel):

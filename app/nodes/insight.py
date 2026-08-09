@@ -15,7 +15,10 @@ _UNIMPLEMENTED_METHODS = ("bayesian", "sequential", "cuped", "novelty", "segment
 
 
 def insight_node(state: ABTestState, llm: Any) -> dict:
-    if state.get("srm_result", {}).get("has_srm"):
+    # Ключ всегда присутствует в состоянии — но со значением None, пока
+    # srm_gate не отработал (например, когда роутер увёл сразу в insight),
+    # поэтому дефолт из .get() тут не срабатывает.
+    if (state.get("srm_result") or {}).get("has_srm"):
         payload = {"srm_result": state["srm_result"]}
         instruction = (
             "Sample ratio mismatch was detected — the experiment is invalid. "

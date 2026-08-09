@@ -7,7 +7,8 @@ exactly what the frontend will do, minus the UI.
     uvicorn api.main:app --reload        # in another terminal
     python scripts/smoke_api.py --csv path/to/data.csv
 
-Exits non-zero if the run does not reach `done`.
+Exits non-zero unless the run reaches `done` (or `clarifying` — агент задал
+уточняющий вопрос, это штатный исход).
 """
 
 from __future__ import annotations
@@ -20,6 +21,10 @@ from pathlib import Path
 from typing import Any, Iterator
 
 import httpx
+
+# Консоль Windows по умолчанию в cp1251 и падает на эмодзи из ответа модели.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 TIMEOUT = httpx.Timeout(10.0, read=300.0)
 
@@ -105,10 +110,13 @@ def main() -> int:
     print("--- result ---")
     print(json.dumps(final.get("results"), ensure_ascii=False, indent=2))
 
-    if status != "done":
+    if status not in ("done", "clarifying"):
         log("FAIL", f"final status={status} error={final.get('error')}")
         return 1
-    log("OK", "run finished")
+    if status == "clarifying":
+        log("OK", "агент задал уточняющий вопрос — ждёт ответа в чате")
+    else:
+        log("OK", "run finished")
     return 0
 
 

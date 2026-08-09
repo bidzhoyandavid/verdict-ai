@@ -61,7 +61,7 @@ class Test(Base):
 
     name: Mapped[str] = mapped_column(String(300))
     hypothesis: Mapped[str] = mapped_column(Text, default="")
-    # queued | analyzing | awaiting_input | done | failed
+    # queued | analyzing | awaiting_input | clarifying | done | failed
     status: Mapped[str] = mapped_column(String(20), default="queued", index=True)
     decision: Mapped[str] = mapped_column(String(50), default="")
 

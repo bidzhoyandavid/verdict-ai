@@ -182,6 +182,23 @@ def test_failing_run_marks_the_test_failed(client, auth, monkeypatch):
     assert "boom" in body["error"]
 
 
+def test_followup_message_does_not_wipe_graph_state(client, auth, monkeypatch):
+    """Вторая реплика должна слать только сообщение: полное начальное
+    состояние затёрло бы результаты анализа в чекпоинте."""
+    graph = FakeGraph(chunks=[{"insight": {"messages": [AIMessage(content="Готово.")]}}], final={"dataset_id": "ds1"})
+    monkeypatch.setattr("api.runner.get_graph", lambda: graph)
+
+    dataset_id = _upload_dataset(client, auth)
+    created = client.post("/tests", headers=auth, json={"name": "T", "dataset_id": dataset_id}).json()
+    _wait_for_status(client, auth, created["id"], {"done", "failed"})
+
+    assert client.post(f"/tests/{created['id']}/messages", headers=auth, json={"text": "почему?"}).status_code == 202
+    _wait_for_status(client, auth, created["id"], {"done", "failed"})
+
+    followup = graph.calls[-1]
+    assert set(followup) == {"messages"}
+
+
 def test_only_admin_can_invite(client, auth):
     invited = client.post("/team", headers=auth, json={"email": f"a-{time.time_ns()}@acme.io", "role": "Analyst"})
     assert invited.status_code == 201

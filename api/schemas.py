@@ -8,7 +8,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, EmailStr, Field
 
 Role = Literal["Admin", "Analyst", "Product", "Marketer", "Other"]
-TestStatus = Literal["queued", "analyzing", "awaiting_input", "done", "failed"]
+TestStatus = Literal["queued", "analyzing", "awaiting_input", "clarifying", "done", "failed"]
 
 
 class SignupRequest(BaseModel):

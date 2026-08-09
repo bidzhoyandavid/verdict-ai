@@ -5,8 +5,29 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
+
 from api.models import Message, Test, User
 from api.schemas import GroupResult, MessageOut, TestOut, TestResults, UserOut
+
+
+def jsonable(value: Any) -> Any:
+    """Приводит вывод abex к JSON-совместимым типам.
+
+    Отчёты собираются из pandas/numpy, поэтому в них попадают np.bool_,
+    np.int64 и np.float64 — драйвер БД на них падает.
+    """
+    if isinstance(value, dict):
+        return {str(k): jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [jsonable(v) for v in value]
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, float) and (np.isnan(value) or np.isinf(value)):
+        # JSON не знает NaN/Infinity; хранить их как null честнее, чем ловить
+        # ошибку парсинга на фронте.
+        return None
+    return value
 
 
 def initials(name: str, email: str) -> str:

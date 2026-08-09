@@ -57,14 +57,15 @@ def create_test(payload: NewTestRequest, user: UserDep, session: SessionDep) -> 
     session.add(test)
     session.commit()
 
-    # The hypothesis is the opening user turn, so the analysis starts on its own.
+    # Анализ стартует сам. В чате показываем гипотезу пользователя, а в граф
+    # уходит явная инструкция — иначе роутер может счесть её вопросом.
     if test.dataset_id:
-        opening = test.hypothesis or "Загружен новый датасет, начни анализ."
-        session.add(
-            Message(test_id=test.id, role="user", author=user.name or user.email, text=opening)
-        )
-        session.commit()
-        runner.start_run(test.id, runner.build_initial_state(test, opening))
+        if test.hypothesis:
+            session.add(
+                Message(test_id=test.id, role="user", author=user.name or user.email, text=test.hypothesis)
+            )
+            session.commit()
+        runner.start_run(test.id, runner.build_initial_state(test, runner.opening_prompt(test)))
 
     return test_out(test)
 
@@ -98,7 +99,7 @@ def send_message(
     session.add(row)
     session.commit()
 
-    runner.start_run(test.id, runner.build_initial_state(test, payload.text))
+    runner.start_run(test.id, runner.build_turn_input(test, payload.text))
     return message_out(row, initials(user.name, user.email))
 
 

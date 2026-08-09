@@ -18,6 +18,7 @@ from api import events
 from api.db import SessionLocal
 from api.graph_runtime import get_graph, thread_config
 from api.models import Message, Test
+from api.serializers import jsonable
 from app.state import STEP_ORDER
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,17 @@ def resume_run(test_id: str, decision: Any) -> None:
     start_run(test_id, Command(resume=decision))
 
 
+def opening_prompt(test: Test) -> str:
+    """Первая реплика, уходящая в граф.
+
+    Одну гипотезу роутер принимает за вопрос и уводит сразу в insight, минуя
+    анализ, — поэтому намерение задаётся явно, а гипотеза идёт контекстом.
+    """
+    hypothesis = (test.hypothesis or "").strip()
+    prompt = "Загружен новый датасет, начни анализ."
+    return f"{prompt} Гипотеза: {hypothesis}" if hypothesis else prompt
+
+
 def build_initial_state(test: Test, user_text: str) -> dict:
     from app.state import empty_state
 
@@ -62,6 +74,20 @@ def build_initial_state(test: Test, user_text: str) -> dict:
     state["id_col"] = config.get("id_col")
     state["messages"] = [HumanMessage(content=user_text)]
     return state
+
+
+def build_turn_input(test: Test, user_text: str) -> dict:
+    """Вход графа для очередной реплики в уже существующем чате.
+
+    Полное начальное состояние тут слать нельзя: его None-поля перезапишут
+    результаты, лежащие в чекпоинте, и агент ответит "данных нет". Отправляем
+    только сообщение — остальное граф возьмёт из своего треда.
+    """
+    snapshot = get_graph().get_state(thread_config(test.thread_id))
+    if snapshot.values.get("dataset_id"):
+        return {"messages": [HumanMessage(content=user_text)]}
+    # Треда ещё нет (например, первый прогон не стартовал) — начинаем с нуля.
+    return build_initial_state(test, user_text)
 
 
 def _run(test_id: str, payload: Any) -> None:
@@ -77,8 +103,8 @@ def _run(test_id: str, payload: Any) -> None:
 
     events.publish(channel, "run.started", {"test_id": test_id, "steps": list(STEP_ORDER)})
     config = thread_config(thread_id)
-    seen_messages = 0
     interrupted = False
+    last_node: str | None = None
 
     try:
         for chunk in graph.stream(payload, config, stream_mode="updates"):
@@ -90,11 +116,12 @@ def _run(test_id: str, payload: Any) -> None:
                 if not isinstance(update, dict):
                     continue
 
-                events.publish(channel, "step.done", {"step": node, "payload": _publishable(update)})
-                seen_messages += _persist_messages(test_id, channel, update.get("messages") or [])
+                last_node = node
+                events.publish(channel, "step.done", {"step": node, "payload": jsonable(_publishable(update))})
+                _persist_messages(test_id, channel, update.get("messages") or [])
 
         if not interrupted:
-            _finish(test_id, channel, config)
+            _finish(test_id, channel, config, last_node)
     except Exception as exc:  # graph failures must surface, not vanish in a thread
         logger.exception("run failed for test %s", test_id)
         with SessionLocal() as session:
@@ -106,6 +133,7 @@ def _run(test_id: str, payload: Any) -> None:
 
 def _handle_interrupt(test_id: str, channel: str, update: Any) -> None:
     payload = update[0].value if isinstance(update, (list, tuple)) and update else update
+    payload = jsonable(payload)
     with SessionLocal() as session:
         test = session.get(Test, test_id)
         if test is not None:
@@ -113,20 +141,30 @@ def _handle_interrupt(test_id: str, channel: str, update: Any) -> None:
     events.publish(channel, "interrupt", {"test_id": test_id, "payload": payload})
 
 
-def _finish(test_id: str, channel: str, config: dict) -> None:
+def _finish(test_id: str, channel: str, config: dict, last_node: str | None) -> None:
     snapshot = get_graph().get_state(config).values
-    results = {
-        "test_result": snapshot.get("test_result"),
-        "srm_result": snapshot.get("srm_result"),
-        "recommendation": snapshot.get("recommendation"),
-        "guardrail_results": snapshot.get("guardrail_results") or [],
-    }
+
+    # `clarify` — тоже терминальная нода графа, но она не завершает анализ,
+    # а задаёт вопрос в чате. Показывать "Готово" в этом случае — врать.
+    status = "clarifying" if last_node == "clarify" else "done"
+
+    results = jsonable(
+        {
+            "test_result": snapshot.get("test_result"),
+            "srm_result": snapshot.get("srm_result"),
+            "recommendation": snapshot.get("recommendation"),
+            "guardrail_results": snapshot.get("guardrail_results") or [],
+        }
+    )
+    has_results = any(results[key] for key in ("test_result", "srm_result"))
+
     with SessionLocal() as session:
         test = session.get(Test, test_id)
         if test is not None:
-            test.results = results
-            _set_status(session, test, "done", pending_interrupt=None)
-    events.publish(channel, "run.finished", {"status": "done", "results": results})
+            if has_results:
+                test.results = results
+            _set_status(session, test, status, pending_interrupt=None)
+    events.publish(channel, "run.finished", {"status": status, "results": results if has_results else None})
 
 
 def _persist_messages(test_id: str, channel: str, messages: list) -> int:

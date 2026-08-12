@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib
 
+import numpy as np
 import pandas as pd
 from abex.analysis.effect_size import effect_size_summary
 from abex.report import build_report
@@ -25,6 +26,11 @@ ALPHA = 0.05
 # расходиться с p-value на границе значимости.
 CI_RESAMPLES = 10_000
 CI_RANDOM_STATE = 0
+
+# Ранговые тесты проверяют сдвиг распределения, а не разницу средних. Считать
+# для них CI разницы средних — сравнивать разные величины: на скошенной метрике
+# ранговый p-value уверенно значим, а интервал средних накрывает ноль.
+RANK_BASED_METHODS = frozenset({"mann_whitney", "wilcoxon_signed_rank", "kruskal_wallis"})
 
 
 def _import_fn(fn_path: str):
@@ -51,6 +57,7 @@ def _describe(values: pd.Series) -> dict:
     stats = {
         "n": int(len(clean)),
         "mean": float(clean.mean()) if len(clean) else None,
+        "median": float(clean.median()) if len(clean) else None,
         "std": float(clean.std()) if len(clean) > 1 else None,
         "sum": float(clean.sum()) if len(clean) else None,
     }
@@ -60,8 +67,23 @@ def _describe(values: pd.Series) -> dict:
     return stats
 
 
-def _difference_ci(control: pd.Series, treatment: pd.Series) -> tuple[float, float] | None:
-    """95% bootstrap CI for the difference of means.
+def _mean_diff(control, treatment) -> float:
+    return float(treatment.mean() - control.mean())
+
+
+def _median_diff(control, treatment) -> float:
+    return float(np.median(treatment) - np.median(control))
+
+
+def ci_estimand(method_name: str) -> str:
+    """Какую величину оценивает интервал — ту же, что проверяет тест."""
+    return "median_diff" if method_name in RANK_BASED_METHODS else "mean_diff"
+
+
+def _difference_ci(
+    control: pd.Series, treatment: pd.Series, estimand: str = "mean_diff"
+) -> tuple[float, float] | None:
+    """95% bootstrap CI for the effect the chosen test actually tests.
 
     Bootstrap makes no distributional assumption, which matters because the
     selector may well have picked a test for a skewed metric.
@@ -71,6 +93,7 @@ def _difference_ci(control: pd.Series, treatment: pd.Series) -> tuple[float, flo
     result = bootstrap_ci(
         control,
         treatment,
+        statistic=_median_diff if estimand == "median_diff" else _mean_diff,
         n_resamples=CI_RESAMPLES,
         alpha=ALPHA,
         random_state=CI_RANDOM_STATE,
@@ -102,12 +125,14 @@ def _analyze_metric(
         {"metric": display_name, "group": name, **_describe(groups[name])} for name in group_names
     ]
 
+    estimand = ci_estimand(recommendation["method_name"])
     raw_result = fn(control, treatment)
     if isinstance(raw_result, TestResult):
         p_value = raw_result.p_value
-        ci = _difference_ci(control, treatment)
+        ci = _difference_ci(control, treatment, estimand)
     elif isinstance(raw_result, BootstrapResult):
         p_value = None
+        estimand = "mean_diff"
         ci = (float(raw_result.ci_low), float(raw_result.ci_high))
     else:
         raise TypeError(f"unsupported stat-test result type: {type(raw_result).__name__}")
@@ -122,6 +147,7 @@ def _analyze_metric(
         ci=ci,
         warnings=list(recommendation.get("warnings", [])),
     )
+    report["ci_estimand"] = estimand
     report["control_group"] = control_name
     report["treatment_group"] = treatment_name
     report["is_primary"] = metric_col in (state.get("metric_col"), state.get("treated_metric_col"))
@@ -150,6 +176,7 @@ def stat_test_node(state: ABTestState) -> dict:
                     "p_value": None,
                     "effect": None,
                     "ci": None,
+                    "ci_estimand": None,
                     "decision": None,
                     "warnings": [f"не удалось посчитать: {exc}"],
                     "is_primary": False,

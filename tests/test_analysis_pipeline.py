@@ -220,9 +220,9 @@ def test_metric_cols_exclude_structural_columns():
     assert "orders" in metrics
 
 
-def test_table_flags_significance_that_contradicts_the_interval():
-    """p<alpha при CI, накрывающем ноль, — граничный случай, о котором
-    читателя таблицы надо предупредить явно."""
+def test_table_drops_significance_that_contradicts_the_interval():
+    """p<alpha при CI, накрывающем ноль, — эффект не доказан. Таблица не имеет
+    права показать «значимо» рядом с интервалом, включающим ноль."""
     state = empty_state("_test")
     state["test_results"] = [
         {
@@ -239,8 +239,8 @@ def test_table_flags_significance_that_contradicts_the_interval():
 
     row = report_table_node(state)["results_table"][0]
 
-    assert row["significant"] is True
-    assert any("CI накрывает ноль" in w for w in row["warnings"])
+    assert row["significant"] is False
+    assert any("накрывает ноль" in w for w in row["warnings"])
 
 
 def test_new_vs_old_is_not_decided_alphabetically():

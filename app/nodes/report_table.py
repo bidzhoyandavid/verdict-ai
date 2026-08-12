@@ -16,6 +16,13 @@ from typing import Any
 from app.state import ABTestState
 
 
+def _group_stat(group_stats: list[dict], metric: str, group: str, key: str) -> float | None:
+    for row in group_stats:
+        if row.get("metric") == metric and row.get("group") == group:
+            return row.get(key)
+    return None
+
+
 def _group_value(group_stats: list[dict], metric: str, group: str) -> float | None:
     """Conversion for binary metrics, mean otherwise — the number a human
     means when they ask "what was it in the control group"."""
@@ -60,7 +67,15 @@ def report_table_node(state: ABTestState) -> dict:
         # Доверительный интервал в долях от контроля: метрики разного масштаба
         # (выручка в тысячах и время в единицах) иначе несравнимы на одном графике.
         control_value = _group_value(group_stats, str(metric), str(control_group))
-        scale = abs(control_value) if isinstance(control_value, (int, float)) and control_value else None
+        # База нормировки должна быть той же величиной, что и в CI: делить
+        # интервал для разницы медиан на среднее контроля — смешивать оценки.
+        estimand = report.get("ci_estimand") or "mean_diff"
+        ci_base = (
+            _group_stat(group_stats, str(metric), str(control_group), "median")
+            if estimand == "median_diff"
+            else control_value
+        )
+        scale = abs(ci_base) if isinstance(ci_base, (int, float)) and ci_base else None
         relative_ci_low = ci.get("low") / scale if scale and ci.get("low") is not None else None
         relative_ci_high = ci.get("high") / scale if scale and ci.get("high") is not None else None
 
@@ -83,14 +98,16 @@ def report_table_node(state: ABTestState) -> dict:
                 "relative_ci_low": relative_ci_low,
                 "relative_ci_high": relative_ci_high,
                 "significant": _is_significant(report),
+                "ci_estimand": estimand,
                 "method": report.get("method"),
                 "warnings": list(report.get("warnings") or []),
             }
         )
 
-    # p-value и бутстрап-интервал — разные оценки, и на границе значимости они
-    # расходятся. Молча показать «значимо: да» рядом с CI, накрывающим ноль,
-    # значит подсунуть читателю противоречие без объяснения.
+    # CI — часть решающего правила, а не иллюстрация. Интервал, накрывающий
+    # ноль, означает «эффект не доказан»; оставить при этом significant=true
+    # значит показать читателю два взаимоисключающих вывода рядом. Побеждает
+    # более консервативный: значимость снимается.
     for row in rows:
         spans_zero = (
             row["ci_low"] is not None
@@ -98,9 +115,13 @@ def report_table_node(state: ABTestState) -> dict:
             and row["ci_low"] <= 0 <= row["ci_high"]
         )
         if row["significant"] and spans_zero:
+            row["significant"] = False
             row["warnings"].append(
-                "p-value говорит о значимости, но 95% CI накрывает ноль — эффект на границе, "
-                "трактовать как уверенный результат нельзя"
+                f"p-value = {row['p_value']:.4g} ниже порога, но 95% CI "
+                f"[{row['ci_low']:.4g}; {row['ci_high']:.4g}] накрывает ноль — "
+                "эффект на границе, значимость снята"
+                if row.get("p_value") is not None
+                else "95% CI накрывает ноль — эффект не доказан, значимость снята"
             )
 
     # SRM invalidates the experiment outright: leaving "significant: true" in

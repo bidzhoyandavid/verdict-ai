@@ -23,7 +23,13 @@ from app.state import ABTestState, active_metric_col, source_metric_col
 logger = logging.getLogger(__name__)
 
 # Больше — уже не помогает читать, а вес состояния растёт линейно.
-MAX_DISTRIBUTION_CHARTS = 3
+MAX_DISTRIBUTION_CHARTS = 8
+
+# Высота CI-графика: строк столько же, сколько метрик, и на 10 метриках
+# фиксированные 340px схлопывают их в нечитаемую кашу.
+CI_ROW_HEIGHT = 34
+CI_BASE_HEIGHT = 140
+CI_MAX_HEIGHT = 720
 
 
 def _spec(figure: Any) -> dict:
@@ -32,8 +38,14 @@ def _spec(figure: Any) -> dict:
     return json.loads(figure.to_json())
 
 
-def _chart(kind: str, title: str, figure: Any) -> dict:
-    return {"kind": kind, "title": title, **_spec(figure)}
+def _chart(kind: str, title: str, figure: Any, span: str = "half", height: int | None = None) -> dict:
+    """`span`/`height` — подсказки лейаута для фронта: сколько колонок сетки
+    занимает график и какая высота ему нужна. Число метрик заранее неизвестно,
+    поэтому раскладку определяет тот, кто знает состав графиков, — этот узел."""
+    chart = {"kind": kind, "title": title, "span": span, **_spec(figure)}
+    if height is not None:
+        chart["height"] = height
+    return chart
 
 
 def charts_node(state: ABTestState) -> dict:
@@ -45,7 +57,8 @@ def charts_node(state: ABTestState) -> dict:
     charts: list[dict] = []
     primary = active_metric_col(state)
 
-    metrics = [row["metric"] for row in (state.get("results_table") or [])][:MAX_DISTRIBUTION_CHARTS]
+    all_metrics = [row["metric"] for row in (state.get("results_table") or [])]
+    metrics = all_metrics[:MAX_DISTRIBUTION_CHARTS]
     if not metrics and primary:
         metrics = [source_metric_col(state, primary)]
 
@@ -59,13 +72,30 @@ def charts_node(state: ABTestState) -> dict:
                     "distribution",
                     f"Распределение: {metric}",
                     plot_distribution(df, str(column), group_col),
+                    span="full" if len(metrics) == 1 else "half",
                 )
             )
         except (ValueError, TypeError) as exc:
             logger.warning("distribution chart skipped for %s: %s", metric, exc)
 
+    timestamp_col = state.get("timestamp_col")
+    if timestamp_col and primary:
+        try:
+            charts.append(
+                _chart(
+                    "timeseries",
+                    f"Динамика: {source_metric_col(state, primary)}",
+                    plot_timeseries(df, str(primary), group_col, timestamp_col),
+                    span="full",
+                )
+            )
+        except (ValueError, TypeError) as exc:
+            logger.warning("timeseries chart skipped: %s", exc)
+
     # Относительный эффект, а не абсолютный: иначе метрика в тысячах единиц
     # растягивает ось и остальные строки схлопываются в ноль.
+    # Идёт последним и на всю ширину: это сводка по всем метрикам сразу —
+    # рядом с ним в полстроки нечему стоять.
     estimates = [
         {
             "metric": row["metric"],
@@ -83,23 +113,12 @@ def charts_node(state: ABTestState) -> dict:
                     "confidence_interval",
                     "Относительный эффект и 95% CI",
                     plot_confidence_interval(estimates, title="Относительный эффект и 95% CI"),
+                    span="full",
+                    height=min(CI_BASE_HEIGHT + CI_ROW_HEIGHT * len(estimates), CI_MAX_HEIGHT),
                 )
             )
         except (ValueError, TypeError) as exc:
             logger.warning("CI chart skipped: %s", exc)
-
-    timestamp_col = state.get("timestamp_col")
-    if timestamp_col and primary:
-        try:
-            charts.append(
-                _chart(
-                    "timeseries",
-                    f"Динамика: {source_metric_col(state, primary)}",
-                    plot_timeseries(df, str(primary), group_col, timestamp_col),
-                )
-            )
-        except (ValueError, TypeError) as exc:
-            logger.warning("timeseries chart skipped: %s", exc)
 
     return {"charts": charts, "last_completed_step": "charts"}
 
